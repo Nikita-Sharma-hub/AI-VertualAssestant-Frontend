@@ -1,63 +1,93 @@
-import React, { useContext, useState } from 'react'
-import bg from "../assets/authBg.png"
+import React, { useContext, useState } from "react";
+import bg from "../assets/authBg.png";
 import { IoEye, IoEyeOff } from "react-icons/io5";
-import { useNavigate } from 'react-router-dom';
-import { userDataContext } from '../context/UserContext';
-import axios from "axios"
+import { useNavigate } from "react-router-dom";
+import { userDataContext } from "../context/UserContext";
+import axios from "axios";
 
 function SignIn() {
+    const [showPassword, setShowPassword] = useState(false);
+    const { serverUrl, setUserData } = useContext(userDataContext);
+    const navigate = useNavigate();
 
-    const [showPassword, setShowPassword] = useState(false)
-    const { serverUrl, setUserData } = useContext(userDataContext)
-    const navigate = useNavigate()
-
-    const [email, setEmail] = useState("")
-    const [password, setPassword] = useState("")
-    const [loading, setLoading] = useState(false)
-    const [err, setErr] = useState("")
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState("");
 
     const handleSignIn = async (e) => {
-        e.preventDefault()
-        setErr("")
-        setLoading(true)
+        e.preventDefault();
+
+        setErr("");
+        setLoading(true);
 
         try {
-            let result = await axios.post(
+            const result = await axios.post(
                 `${serverUrl}/api/auth/signin`,
-                { email, password },
-                { withCredentials: true }
-            )
+                {
+                    email: email.trim(),
+                    password: password,
+                },
+                {
+                    withCredentials: true,
+                }
+            );
 
-            setUserData(result.data.user)
-            navigate("/")
+            console.log("SIGNIN SUCCESS:", result.data);
+
+            setUserData(result.data.user);
+
+            navigate("/");
         } catch (error) {
-            console.log(error)
-            setUserData(null)
-            setErr(
-                error.response?.data?.message ||
-                "Network error — is the backend running on " + serverUrl + " ?"
-            )
+            console.log("========== SIGN IN ERROR ==========");
+
+            console.log("STATUS:", error.response?.status);
+
+            console.log(
+                "DATA:",
+                JSON.stringify(error.response?.data, null, 2)
+            );
+
+            console.log("MESSAGE:", error.message);
+
+            console.log("SERVER URL:", serverUrl);
+
+            console.log("===================================");
+
+            setUserData(null);
+
+            if (error.response) {
+                setErr(
+                    error.response.data?.message ||
+                    error.response.data?.error ||
+                    `Server error: ${error.response.status}`
+                );
+            } else if (error.request) {
+                setErr(
+                    "Unable to connect to the server. Please check your backend."
+                );
+            } else {
+                setErr("Something went wrong. Please try again.");
+            }
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     return (
-
         <>
-            {/* 🔥 Remove browser default password eye */}
             <style>
                 {`
-              input[type="password"]::-ms-reveal,
-              input[type="password"]::-ms-clear {
-                display: none;
-              }
+                    input[type="password"]::-ms-reveal,
+                    input[type="password"]::-ms-clear {
+                        display: none;
+                    }
 
-              input[type="password"]::-webkit-credentials-auto-fill-button,
-              input[type="password"]::-webkit-textfield-decoration-container {
-                display: none !important;
-              }
-            `}
+                    input[type="password"]::-webkit-credentials-auto-fill-button,
+                    input[type="password"]::-webkit-textfield-decoration-container {
+                        display: none !important;
+                    }
+                `}
             </style>
 
             <div
@@ -71,7 +101,9 @@ function SignIn() {
                     {/* Heading */}
                     <h1 className="text-[30px] font-semibold mb-[30px] text-white">
                         Sign In to{" "}
-                        <span className="text-blue-400">Virtual Assistant</span>
+                        <span className="text-blue-400">
+                            Virtual Assistant
+                        </span>
                     </h1>
 
                     {/* Email */}
@@ -84,19 +116,17 @@ function SignIn() {
                         onChange={(e) => setEmail(e.target.value)}
                     />
 
-                    {/* Password Wrapper */}
+                    {/* Password */}
                     <div className="w-[90%] h-[60px] relative">
                         <input
                             type={showPassword ? "text" : "password"}
                             placeholder="Password"
-                            autoComplete="new-password"
-                            data-lpignore="true"
+                            autoComplete="current-password"
                             className="w-full h-full border-2 border-white bg-transparent outline-none px-[20px] pr-[60px] rounded-full text-[18px] text-white placeholder-gray-300"
                             required
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
-
 
                         {showPassword ? (
                             <IoEyeOff
@@ -115,32 +145,34 @@ function SignIn() {
 
                     {/* Error */}
                     {err && (
-                        <p className="text-red-500 text-[17px] text-center">
-                            *{err}
+                        <p className="text-red-500 text-[17px] text-center max-w-[90%]">
+                            * {err}
                         </p>
                     )}
 
-                    {/* Button */}
+                    {/* Sign In Button */}
                     <button
+                        type="submit"
                         className="min-w-[150px] h-[60px] mt-[30px] text-black font-semibold bg-white rounded-full text-[19px] transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-white/30 disabled:hover:scale-100 disabled:hover:shadow-none disabled:opacity-70"
                         disabled={loading}
                     >
                         {loading ? "Loading..." : "Sign In"}
                     </button>
 
-                    {/* Redirect */}
+                    {/* Sign Up */}
                     <p
                         className="text-white text-[18px] cursor-pointer"
                         onClick={() => navigate("/signup")}
                     >
                         Want to create a new account?{" "}
-                        <span className="text-blue-400">Sign Up</span>
+                        <span className="text-blue-400">
+                            Sign Up
+                        </span>
                     </p>
-
                 </form>
             </div>
         </>
     );
 }
 
-export default SignIn
+export default SignIn;
