@@ -17,26 +17,31 @@ function Home() {
   const [listening, setListening] = useState(false)
   const [userText, setUserText] = useState("")
   const [aiText, setAiText] = useState("")
-  const [ham, setHam] = useState(false)
-  const [speechRecognitionAvailable, setSpeechRecognitionAvailable] = useState(true)
 
-  const recognitionRef = useRef(null)
-  const isRecognizingRef = useRef(false)
   const isSpeakingRef = useRef(false)
-  const isMountedRef = useRef(true)
-  const restartTimeoutRef = useRef(null)
+  const recognitionRef = useRef(null)
+
+  const [ham, setHam] = useState(false)
+
+  const isRecognizingRef = useRef(false)
 
   const synth = window.speechSynthesis
 
+  const networkErrorCountRef = useRef(0)
 
-  // =========================
-  // LOGOUT
-  // =========================
+  const [speechRecognitionAvailable, setSpeechRecognitionAvailable] =
+    useState(true)
+
+  const errorOccurredRef = useRef(false)
+
+  const recognitionStartTimeRef = useRef(null)
+
 
   const handleLogOut = async () => {
+
     try {
 
-      await axios.get(
+      const result = await axios.get(
         `${serverUrl}/api/auth/logout`,
         { withCredentials: true }
       )
@@ -50,107 +55,100 @@ function Home() {
       console.log(error)
 
     }
+
   }
 
-
-  // =========================
-  // START RECOGNITION
-  // =========================
 
   const startRecognition = () => {
 
-    const recognition = recognitionRef.current
+    if (
+      !isSpeakingRef.current &&
+      !isRecognizingRef.current
+    ) {
 
-    if (!recognition) return
+      try {
 
-    if (isSpeakingRef.current) return
+        recognitionRef.current?.start()
 
-    if (isRecognizingRef.current) return
+        console.log(
+          "Recognition requested to start"
+        )
 
-    try {
+      } catch (error) {
 
-      recognition.start()
+        if (error.name !== "InvalidStateError") {
+          console.error(
+            "Start error:",
+            error
+          )
+        }
 
-      console.log("🎤 Recognition requested")
-
-    } catch (error) {
-
-      if (error.name !== "InvalidStateError") {
-        console.error("Recognition start error:", error)
       }
 
     }
+
   }
 
 
-  // =========================
-  // SPEAK
-  // =========================
-
   const speak = (text) => {
 
-    if (!text) return
+    const utterence =
+      new SpeechSynthesisUtterance(text)
+
+    utterence.lang = 'hi-IN'
+
+    const voices =
+      window.speechSynthesis.getVoices()
+
+    const hindiVoice =
+      voices.find(
+        v => v.lang === 'hi-IN'
+      )
+
+    if (hindiVoice) {
+      utterence.voice = hindiVoice
+    }
+
 
     isSpeakingRef.current = true
 
-    const utterance = new SpeechSynthesisUtterance(text)
-
-    utterance.lang = 'hi-IN'
-
-    const voices = window.speechSynthesis.getVoices()
-
-    const hindiVoice = voices.find(
-      voice => voice.lang === 'hi-IN'
-    )
-
-    if (hindiVoice) {
-      utterance.voice = hindiVoice
-    }
-
-    utterance.onend = () => {
-
-      isSpeakingRef.current = false
+    utterence.onend = () => {
 
       setAiText("")
 
-      // Start listening again after AI finishes speaking
+      isSpeakingRef.current = false
+
       setTimeout(() => {
 
-        if (
-          isMountedRef.current &&
-          !isSpeakingRef.current &&
-          !isRecognizingRef.current
-        ) {
-
-          startRecognition()
-
-        }
+        startRecognition()
 
       }, 800)
 
     }
 
     synth.cancel()
-    synth.speak(utterance)
+
+    synth.speak(utterence)
+
   }
 
 
-  // =========================
-  // HANDLE COMMAND
-  // =========================
-
   const handleCommand = (data) => {
 
-    if (!data) return
+    const {
+      type,
+      userInput,
+      response
+    } = data
 
-    const { type, userInput, response } = data
 
     speak(response)
 
 
     if (type === 'google-search') {
 
-      const query = encodeURIComponent(userInput)
+      const query =
+        encodeURIComponent(userInput)
 
       window.location.href =
         `https://www.google.com/search?q=${query}`
@@ -195,7 +193,8 @@ function Home() {
       type === 'youtube-play'
     ) {
 
-      const query = encodeURIComponent(userInput)
+      const query =
+        encodeURIComponent(userInput)
 
       window.location.href =
         `https://www.youtube.com/results?search_query=${query}`
@@ -205,329 +204,373 @@ function Home() {
   }
 
 
-  // =========================
-  // SPEECH RECOGNITION
-  // =========================
-
   useEffect(() => {
-
-    isMountedRef.current = true
 
     const SpeechRecognition =
       window.SpeechRecognition ||
       window.webkitSpeechRecognition
 
-
-    // Browser doesn't support Speech Recognition
-    if (!SpeechRecognition) {
-
-      console.error(
-        "Speech Recognition is not supported in this browser."
-      )
-
-      setSpeechRecognitionAvailable(false)
-
-      return
-
-    }
-
-
-    const recognition = new SpeechRecognition()
+    const recognition =
+      new SpeechRecognition()
 
 
     recognition.continuous = true
+
     recognition.lang = 'en-US'
+
     recognition.interimResults = false
 
 
     recognitionRef.current = recognition
 
 
-    // =========================
-    // ON START
-    // =========================
+    let isMounted = true
+
+
+    const startTimeout =
+      setTimeout(() => {
+
+        if (
+          isMounted &&
+          !isSpeakingRef.current &&
+          !isRecognizingRef.current
+        ) {
+
+          try {
+
+            recognition.start()
+
+            console.log(
+              "Recognition requested to start"
+            )
+
+          } catch (e) {
+
+            if (
+              e.name !== "InvalidStateError"
+            ) {
+
+              console.error(e)
+
+            }
+
+          }
+
+        }
+
+      }, 1000)
+
 
     recognition.onstart = () => {
-
-      console.log("🎤 Speech recognition STARTED")
 
       isRecognizingRef.current = true
 
       setListening(true)
+
+      recognitionStartTimeRef.current =
+        Date.now()
+
+      errorOccurredRef.current = false
 
       setSpeechRecognitionAvailable(true)
 
     }
 
 
-    // =========================
-    // ON RESULT
-    // =========================
+    recognition.onend = () => {
 
-    recognition.onresult = async (event) => {
+      isRecognizingRef.current = false
 
-      try {
-
-        const transcript =
-          event.results[
-            event.results.length - 1
-          ][0].transcript.trim()
+      setListening(false)
 
 
-        console.log("🗣️ Heard:", transcript)
+      if (
+        isMounted &&
+        !isSpeakingRef.current &&
+        !errorOccurredRef.current &&
+        networkErrorCountRef.current < 3
+      ) {
 
+        setTimeout(() => {
 
-        if (!transcript) return
+          if (
+            isMounted &&
+            !errorOccurredRef.current &&
+            networkErrorCountRef.current < 3
+          ) {
 
+            try {
 
-        const assistantName =
-          userData?.assistantName?.toLowerCase()
+              recognition.start()
 
+              console.log(
+                "Recognition restarted"
+              )
 
-        if (!assistantName) return
+            } catch (e) {
 
+              if (
+                e.name !== "InvalidStateError"
+              ) {
 
-        if (
-          transcript
-            .toLowerCase()
-            .includes(assistantName)
-        ) {
+                console.error(e)
 
-          console.log(
-            "✅ Assistant name detected"
-          )
+              }
 
-
-          // Stop listening before processing command
-          try {
-            recognition.stop()
-          } catch (error) {
-            console.log(error)
-          }
-
-
-          isRecognizingRef.current = false
-
-          setListening(false)
-
-          setUserText(transcript)
-
-          setAiText("")
-
-
-          // Get Gemini response
-          const data =
-            await getGeminiResponse(transcript)
-
-
-          if (!data) {
-
-            console.error(
-              "No response from Gemini"
-            )
-
-            return
+            }
 
           }
 
-
-          setAiText(data.response)
-
-          setUserText("")
-
-          handleCommand(data)
-
-        }
-
-      } catch (error) {
-
-        console.error(
-          "Speech result error:",
-          error
-        )
+        }, 1000)
 
       }
 
+
+      errorOccurredRef.current = false
+
     }
 
-
-    // =========================
-    // ON ERROR
-    // =========================
 
     recognition.onerror = (event) => {
 
-      console.warn(
-        "🎤 Speech recognition error:",
-        event.error
-      )
-
-
-      isRecognizingRef.current = false
-
-      setListening(false)
-
-
-      // Permission denied
-      if (
-        event.error === "not-allowed" ||
-        event.error === "service-not-allowed"
-      ) {
-
-        setSpeechRecognitionAvailable(false)
-
-        return
-
-      }
-
-
-      // No speech is NOT a fatal error
-      if (event.error === "no-speech") {
-
-        console.log(
-          "No speech detected."
-        )
-
-        return
-
-      }
-
-
-      // Network error
-      if (event.error === "network") {
+      if (event.error !== "aborted") {
 
         console.warn(
-          "Speech recognition network error."
+          "Recognition error:",
+          event.error
         )
 
-        // Don't create an infinite restart loop
-        setSpeechRecognitionAvailable(false)
-
-        return
-
       }
-
-
-      // Aborted is normally caused by stop()
-      if (event.error === "aborted") {
-
-        console.log(
-          "Speech recognition aborted."
-        )
-
-        return
-
-      }
-
-    }
-
-
-    // =========================
-    // ON END
-    // =========================
-
-    recognition.onend = () => {
-
-      console.log(
-        "🎤 Speech recognition ENDED"
-      )
 
 
       isRecognizingRef.current = false
 
       setListening(false)
 
+      errorOccurredRef.current = true
 
-      // IMPORTANT:
-      // Do NOT automatically restart here.
-      //
-      // Automatic restart was causing:
-      // network -> restart -> aborted -> restart
-      //
-      // Recognition will be started again only
-      // after AI finishes speaking.
+
+      if (event.error === "aborted") {
+
+        errorOccurredRef.current = false
+
+        return
+
+      }
+
+
+      if (event.error === "network") {
+
+        const timeSinceStart =
+          recognitionStartTimeRef.current
+            ? Date.now() -
+            recognitionStartTimeRef.current
+            : Infinity
+
+
+        if (timeSinceStart > 2000) {
+
+          networkErrorCountRef.current += 1
+
+        } else {
+
+          networkErrorCountRef.current += 1
+
+        }
+
+
+        console.log(
+          `Network error count: ${networkErrorCountRef.current}/3`
+        )
+
+
+        if (
+          networkErrorCountRef.current >= 3
+        ) {
+
+          console.error(
+            "Speech recognition unavailable: Network error persists. Stopping retries."
+          )
+
+          setSpeechRecognitionAvailable(
+            false
+          )
+
+          errorOccurredRef.current = false
+
+          return
+
+        }
+
+      } else {
+
+        networkErrorCountRef.current = 0
+
+      }
+
+
+      const fatalErrors = [
+        "not-allowed",
+        "service-not-allowed",
+        "no-speech"
+      ]
+
+
+      if (
+        fatalErrors.includes(event.error)
+      ) {
+
+        console.error(
+          `Speech recognition unavailable: ${event.error}`
+        )
+
+        setSpeechRecognitionAvailable(
+          false
+        )
+
+        errorOccurredRef.current = false
+
+        return
+
+      }
+
+
+      if (
+        isMounted &&
+        !isSpeakingRef.current &&
+        networkErrorCountRef.current < 3
+      ) {
+
+        const delay =
+          event.error === "network"
+            ? 3000
+            : 1000
+
+
+        setTimeout(() => {
+
+          if (
+            isMounted &&
+            networkErrorCountRef.current < 3
+          ) {
+
+            errorOccurredRef.current =
+              false
+
+            try {
+
+              recognition.start()
+
+              console.log(
+                "Recognition restarted after error"
+              )
+
+            } catch (e) {
+
+              if (
+                e.name !== "InvalidStateError"
+              ) {
+
+                console.error(e)
+
+              }
+
+            }
+
+          }
+
+        }, delay)
+
+      } else {
+
+        errorOccurredRef.current = false
+
+      }
 
     }
 
 
-    // =========================
-    // GREETING
-    // =========================
+    recognition.onresult = async (e) => {
+
+      const transcript =
+        e.results[
+          e.results.length - 1
+        ][0].transcript.trim()
+
+
+      if (
+        transcript
+          .toLowerCase()
+          .includes(
+            userData.assistantName.toLowerCase()
+          )
+      ) {
+
+        networkErrorCountRef.current = 0
+
+        setAiText("")
+
+        setUserText(transcript)
+
+        recognition.stop()
+
+        isRecognizingRef.current = false
+
+        setListening(false)
+
+
+        const data =
+          await getGeminiResponse(
+            transcript
+          )
+
+
+        handleCommand(data)
+
+        setAiText(data.response)
+
+        setUserText("")
+
+      }
+
+    }
+
 
     const greeting =
       new SpeechSynthesisUtterance(
-        `Hello ${userData?.name || ""}, what can I help you with?`
+        `Hello ${userData.name}, what can I help you with?`
       )
 
     greeting.lang = 'hi-IN'
 
 
-    window.speechSynthesis.speak(greeting)
+    window.speechSynthesis.speak(
+      greeting
+    )
 
-
-    // Start recognition AFTER greeting finishes
-    greeting.onend = () => {
-
-      if (
-        isMountedRef.current &&
-        !isSpeakingRef.current &&
-        !isRecognizingRef.current
-      ) {
-
-        setTimeout(() => {
-
-          startRecognition()
-
-        }, 800)
-
-      }
-
-    }
-
-
-    // =========================
-    // CLEANUP
-    // =========================
 
     return () => {
 
-      isMountedRef.current = false
+      isMounted = false
 
-      clearTimeout(
-        restartTimeoutRef.current
-      )
+      clearTimeout(startTimeout)
 
-      try {
+      recognition.stop()
 
-        recognition.stop()
-
-      } catch (error) {
-
-        console.log(error)
-
-      }
-
-      recognitionRef.current = null
+      setListening(false)
 
       isRecognizingRef.current = false
 
-      setListening(false)
+      networkErrorCountRef.current = 0
 
     }
 
   }, [])
 
 
-  // =========================
-  // UI
-  // =========================
-
   return (
 
     <div className='w-full h-[100vh] bg-gradient-to-t from-[black] to-[#02023d] flex justify-center items-center flex-col gap-[15px] overflow-hidden'>
-
-
-      {/* MOBILE MENU */}
 
       <CgMenuRight
         className='lg:hidden text-white absolute top-[20px] right-[20px] w-[25px] h-[25px] cursor-pointer transition-transform duration-200 hover:scale-110 hover:text-blue-400'
@@ -537,8 +580,8 @@ function Home() {
 
       <div
         className={`absolute lg:hidden top-0 w-full h-full bg-[#00000053] backdrop-blur-lg p-[20px] flex flex-col gap-[20px] items-start ${ham
-          ? "translate-x-0"
-          : "translate-x-full"
+            ? "translate-x-0"
+            : "translate-x-full"
           } transition-transform`}
       >
 
@@ -574,12 +617,9 @@ function Home() {
 
         <div className='w-full h-[400px] gap-[20px] overflow-y-auto flex flex-col truncate'>
 
-          {userData?.history?.map((his, index) => (
+          {userData.history?.map((his) => (
 
-            <div
-              key={index}
-              className='text-gray-200 text-[18px] w-full h-[30px]'
-            >
+            <div className='text-gray-200 text-[18px] w-full h-[30px]'>
               {his}
             </div>
 
@@ -589,8 +629,6 @@ function Home() {
 
       </div>
 
-
-      {/* DESKTOP BUTTONS */}
 
       <button
         className='min-w-[150px] h-[60px] mt-[30px] text-black font-semibold absolute hidden lg:block top-[20px] right-[20px] bg-white rounded-full cursor-pointer text-[19px] transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-white/30'
@@ -607,8 +645,6 @@ function Home() {
         Customize your Assistant
       </button>
 
-
-      {/* ASSISTANT IMAGE */}
 
       <div className='w-[300px] h-[400px] flex justify-center items-center overflow-hidden rounded-4xl shadow-lg'>
 
@@ -646,11 +682,13 @@ function Home() {
 
       <h1 className='text-white text-[18px] font-semibold text-wrap'>
 
-        {userText
-          ? userText
-          : aiText
-            ? aiText
-            : null}
+        {
+          userText
+            ? userText
+            : aiText
+              ? aiText
+              : null
+        }
 
       </h1>
 
@@ -661,8 +699,8 @@ function Home() {
 
           <p className='text-yellow-300 text-[14px] text-center'>
 
-            ⚠️ Speech recognition is currently unavailable.
-            Please refresh the page and try again.
+            ⚠️ Speech recognition unavailable.
+            Check your internet connection or try refreshing the page.
 
           </p>
 
